@@ -91,7 +91,9 @@ namespace Scratch
             var applicantForm = new ApplicantForm();
             var classUnderTest = new Paylater(new MessageBus());
 
-            classUnderTest.GetStep("LoanApplications/1/applicant", applicantForm);
+            var response = classUnderTest.GetStep("LoanApplications/1/applicant", applicantForm);
+
+            Assert.That(response.IsError, Is.False);
         }
 
         [Test]
