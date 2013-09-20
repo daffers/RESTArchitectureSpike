@@ -9,14 +9,27 @@ namespace Scratch
     [TestFixture]
     public class PaylaterProcessTests
     {
+        private string GetRootUri()
+        {
+            return "http://host.com/1.0/en-gb/Paylater/";
+        }
+
+        private PaylaterSession BuildUpClassUnderTest(MessageBus bus = null)
+        {
+            if (bus == null)
+                bus = new MessageBus();
+
+            return new PaylaterSession(bus, GetRootUri());
+        }
+
         [Test]
         public void WhenIAmStartingWithPaylaterICanGetDetailsOfTheFirstSteps()
         {
-            var classUnderTest = new Paylater(new MessageBus());
+            var classUnderTest = BuildUpClassUnderTest();
 
-            var response = classUnderTest.GetStep("", null);
+            var response = classUnderTest.GetStep("", null, null);
 
-            Assert.That(response.Links[0].Link, Is.EqualTo("http://host.com/1.0/en-gb/Paylater/LoanApplications"));
+            AssertExpectedResourcePath("LoanApplications", response);
             Assert.That(response.Links[0].Relation, Is.EqualTo("CreateApplicationFromOrder"));
             Assert.That(response.Links[0].Method, Is.EqualTo("POST"));
         }
@@ -25,9 +38,9 @@ namespace Scratch
         public void ICanSendMyOrderToStartAPaylaterAppplication()
         {
             var order = new OrderForm();
-            var classUnderTest = new Paylater(new MessageBus());
+            var classUnderTest = BuildUpClassUnderTest();
 
-            var response = classUnderTest.GetStep("LoanApplications", order);
+            var response = classUnderTest.GetStep("LoanApplications", order, null);
         }
 
         [Test]
@@ -37,9 +50,9 @@ namespace Scratch
 
             var order = new OrderForm();
             order.OrderId = Guid.NewGuid();
-            var classUnderTest = new Paylater(messageBus);
+            var classUnderTest = BuildUpClassUnderTest(messageBus);
             
-            classUnderTest.GetStep("LoanApplications", order);
+            classUnderTest.GetStep("LoanApplications", order, null);
 
             Assert.That(messageBus.Queue.Count(), Is.EqualTo(1));
             Assert.That(messageBus.Queue[0].OrderId, Is.EqualTo(order.OrderId));
@@ -49,11 +62,11 @@ namespace Scratch
         public void WhenISendAnOrderMyResponseTellsMeToProvideApplicatDetails()
         {
             var order = new OrderForm();
-            var classUnderTest = new Paylater(new MessageBus());
+            var classUnderTest = BuildUpClassUnderTest();
 
-            var response = classUnderTest.GetStep("LoanApplications", order);
-            
-            Assert.That(response.Links[0].Link, Is.EqualTo("http://host.com/1.0/en-gb/Paylater/LoanApplications/1/applicant"));
+            var response = classUnderTest.GetStep("LoanApplications", order, null);
+
+            AssertExpectedResourcePath("LoanApplications/1/applicant", response);
             Assert.That(response.Links[0].Relation, Is.EqualTo("CreateApplicant"));
             Assert.That(response.Links[0].Method, Is.EqualTo("POST"));
         }
@@ -62,13 +75,13 @@ namespace Scratch
         public void WhenISendAnOrderMyResponseAlsoTellsMeToRequestAMobileVerification()
         {
             var order = new OrderForm();
-            var classUnderTest = new Paylater(new MessageBus());
+            var classUnderTest = BuildUpClassUnderTest();
 
-            var response = classUnderTest.GetStep("LoanApplications", order);
+            var response = classUnderTest.GetStep("LoanApplications", order, null);
 
             Assert.That(response.Links.Count, Is.EqualTo(2));
 
-            Assert.That(response.Links[1].Link, Is.EqualTo("http://host.com/1.0/en-gb/Paylater/LoanApplications/1/mobilephoneverifications"));
+            AssertExpectedResourcePath("LoanApplications/1/mobilephoneverifications", response);
             Assert.That(response.Links[1].Relation, Is.EqualTo("CreateMobilePhoneVerificationRequest"));
             Assert.That(response.Links[1].Method, Is.EqualTo("POST"));
         }
@@ -77,23 +90,12 @@ namespace Scratch
         public void IShouldNotBeAbleToPostAnOrderToAnExistingOrder()
         {
             var order = new OrderForm();
-            var classUnderTest = new Paylater(new MessageBus());
+            var classUnderTest = BuildUpClassUnderTest();
 
-            var response = classUnderTest.GetStep("LoanApplications/1", order);
+            var response = classUnderTest.GetStep("LoanApplications/1", order, null);
 
             Assert.That(response.IsError, Is.True);
             Assert.That(response.Links.Count, Is.EqualTo(0));
-        }
-
-        [Test]
-        public void IShouldBeAbleToSubmitApplicantDetails()
-        {
-            var applicantForm = new ApplicantForm();
-            var classUnderTest = new Paylater(new MessageBus());
-
-            var response = classUnderTest.GetStep("LoanApplications/1/applicant", applicantForm);
-
-            Assert.That(response.IsError, Is.False);
         }
 
         [Test]
@@ -101,11 +103,11 @@ namespace Scratch
         {
             var applicantForm = new ApplicantForm();
             var orderForm = new OrderForm();
-            var classUnderTest = new Paylater(new MessageBus());
+            var classUnderTest = BuildUpClassUnderTest();
 
-            classUnderTest.GetStep("", orderForm);
-            classUnderTest.GetStep("LoanApplications/1/applicant", applicantForm);
-            var response = classUnderTest.GetStep("LoanApplications/1/applicant", applicantForm);
+            classUnderTest.GetStep("", orderForm, null);
+            classUnderTest.GetStep("LoanApplications/1/applicant", applicantForm, null);
+            var response = classUnderTest.GetStep("LoanApplications/1/applicant", applicantForm, null);
 
             Assert.That(response.IsError, Is.True);
         }
@@ -114,11 +116,48 @@ namespace Scratch
         public void IShouldNotBeAbleToSubmitApplicantDetailsUntilIHaveSubmittedAnOrder()
         {
             var applicantForm = new ApplicantForm();
-            var classUnderTest = new Paylater(new MessageBus());
+            var classUnderTest = BuildUpClassUnderTest();
 
-            var response = classUnderTest.GetStep("LoanApplications/1/applicant", applicantForm);
+            var response = classUnderTest.GetStep("LoanApplications/1/applicant", applicantForm, null);
 
             Assert.That(response.IsError, Is.True);
+        }
+
+        [Test]
+        public void IShouldBeAbleToContinueMyPaylaterOrderInDifferentPaylaterSessionsByRelayingEchoState()
+        {
+            var order = new OrderForm();
+            var firstSession = BuildUpClassUnderTest();
+
+            var firstResponse = firstSession.GetStep("LoanApplications", order, null);
+
+            Assert.That(firstResponse.EchoState, Is.Not.Null);
+
+            var applicant = new ApplicantForm();
+            var secondSession = BuildUpClassUnderTest();
+
+            var secondResponse = secondSession.GetStep("LoanApplications/1/applicant", applicant, firstResponse.EchoState);
+
+            Assert.That(secondResponse.IsError, Is.False);
+
+        }
+
+        [Test]
+        public void UnrecognisedResourceIdntifierShouldResultInAnError()
+        {
+            var applicantForm = new ApplicantForm();
+            var classUnderTest = BuildUpClassUnderTest();
+
+            var response = classUnderTest.GetStep("nothere", applicantForm, null);
+
+            Assert.That(response.IsError, Is.EqualTo(true));
+        }
+
+        private void AssertExpectedResourcePath(string expectedResourcePath, Response response)
+        {
+            string expectedLink = GetRootUri() + expectedResourcePath;
+            var links = response.Links.Select(x => x.Link).ToList();
+            Assert.That(links, Contains.Item(expectedLink));
         }
     }
 
@@ -155,6 +194,7 @@ namespace Scratch
         public List<LinkRelation> Links { get; set; }
 
         public bool IsError { get; set; }
+        public string EchoState { get; set; }
     }
 
     public class LinkRelation
