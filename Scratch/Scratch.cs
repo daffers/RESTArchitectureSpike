@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 
 namespace Scratch
@@ -23,24 +23,26 @@ namespace Scratch
         }
 
         [Test]
+        public void UnrecognisedResourceIdntifierShouldResultInAnError()
+        {
+            var applicantForm = new ApplicantForm();
+            var classUnderTest = BuildUpClassUnderTest();
+
+            var response = classUnderTest.GetStep("nothere", applicantForm, null);
+
+            Assert.That(response.IsError, Is.EqualTo(true));
+        }
+
+        [Test]
         public void WhenIAmStartingWithPaylaterICanGetDetailsOfTheFirstSteps()
         {
             var classUnderTest = BuildUpClassUnderTest();
 
-            var response = classUnderTest.GetStep("", null, null);
+            var response = GetFirstStepUri(classUnderTest);
 
             AssertExpectedResourcePath("LoanApplications", response);
             Assert.That(response.Links[0].Relation, Is.EqualTo("CreateApplicationFromOrder"));
             Assert.That(response.Links[0].Method, Is.EqualTo("POST"));
-        }
-
-        [Test]
-        public void ICanSendMyOrderToStartAPaylaterAppplication()
-        {
-            var order = new OrderForm();
-            var classUnderTest = BuildUpClassUnderTest();
-
-            var response = classUnderTest.GetStep("LoanApplications", order, null);
         }
 
         [Test]
@@ -66,7 +68,7 @@ namespace Scratch
 
             var response = classUnderTest.GetStep("LoanApplications", order, null);
 
-            AssertExpectedResourcePath("LoanApplications/1/applicant", response);
+            AssertExpectedResourcePath("LoanApplications/{guid}/applicant", response);
             Assert.That(response.Links[0].Relation, Is.EqualTo("CreateApplicant"));
             Assert.That(response.Links[0].Method, Is.EqualTo("POST"));
         }
@@ -81,7 +83,7 @@ namespace Scratch
 
             Assert.That(response.Links.Count, Is.EqualTo(2));
 
-            AssertExpectedResourcePath("LoanApplications/1/mobilephoneverifications", response);
+            AssertExpectedResourcePath("LoanApplications/{guid}/mobilephoneverifications", response);
             Assert.That(response.Links[1].Relation, Is.EqualTo("CreateMobilePhoneVerificationRequest"));
             Assert.That(response.Links[1].Method, Is.EqualTo("POST"));
         }
@@ -92,10 +94,27 @@ namespace Scratch
             var order = new OrderForm();
             var classUnderTest = BuildUpClassUnderTest();
 
-            var response = classUnderTest.GetStep("LoanApplications/1", order, null);
-
+            var response = classUnderTest.GetStep("LoanApplications/" + Guid.NewGuid(), order, null);
+            
             Assert.That(response.IsError, Is.True);
             Assert.That(response.Links.Count, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void IShouldGetBackAUniqueIdEveryTimeISendANewOrderIn()
+        {
+            var firstOrder = new OrderForm();
+            var secondOrder = new OrderForm();
+
+            var classUnderTest = BuildUpClassUnderTest();
+
+            var firstResponse = classUnderTest.GetStep("LoanApplications", firstOrder, null);
+            var secondResponse = classUnderTest.GetStep("LoanApplications", secondOrder, null);
+
+            var firstResponseFirstLink = firstResponse.Links.First().Link;
+            var secondResponseFirstLink = secondResponse.Links.First().Link;
+
+            Assert.AreNotEqual(firstResponseFirstLink, secondResponseFirstLink);
         }
 
         [Test]
@@ -105,11 +124,13 @@ namespace Scratch
             var orderForm = new OrderForm();
             var classUnderTest = BuildUpClassUnderTest();
 
-            classUnderTest.GetStep("", orderForm, null);
-            classUnderTest.GetStep("LoanApplications/1/applicant", applicantForm, null);
-            var response = classUnderTest.GetStep("LoanApplications/1/applicant", applicantForm, null);
-
-            Assert.That(response.IsError, Is.True);
+            var firstResponse = GetFirstStepUri(classUnderTest);
+            var orderResponse = classUnderTest.GetNextResponseForRel("CreateApplicationFromOrder", orderForm, firstResponse);
+            var firstApplicantResponse = classUnderTest.GetNextResponseForRel("CreateApplicant", applicantForm, orderResponse);
+            var resource = PaylaterSessionTestHelperExtensions.GetNextResourcePath("CreateApplicant", orderResponse);
+            var secondApplicantResponse = classUnderTest.GetStep(resource, applicantForm, firstApplicantResponse.EchoState);
+            
+            Assert.That(secondApplicantResponse.IsError, Is.True);
         }
 
         [Test]
@@ -124,40 +145,90 @@ namespace Scratch
         }
 
         [Test]
-        public void IShouldBeAbleToContinueMyPaylaterOrderInDifferentPaylaterSessionsByRelayingEchoState()
+        public void IShouldBeAbleToContinueMyPaylaterOrderInADifferentPaylaterSessionsByRelayingEchoState()
         {
-            var order = new OrderForm();
             var firstSession = BuildUpClassUnderTest();
 
-            var firstResponse = firstSession.GetStep("LoanApplications", order, null);
+            var firstStep = GetFirstStepUri(firstSession);
+            var firstResponse = firstSession.GetNextResponseForRel("CreateApplicationFromOrder", new OrderForm(), firstStep);
 
             Assert.That(firstResponse.EchoState, Is.Not.Null);
 
-            var applicant = new ApplicantForm();
             var secondSession = BuildUpClassUnderTest();
 
-            var secondResponse = secondSession.GetStep("LoanApplications/1/applicant", applicant, firstResponse.EchoState);
+            var secondResponse = secondSession.GetNextResponseForRel("CreateApplicant", new ApplicantForm(), firstResponse);
 
             Assert.That(secondResponse.IsError, Is.False);
-
         }
 
         [Test]
-        public void UnrecognisedResourceIdntifierShouldResultInAnError()
+        public void IShouldNotAbleToSubmitApplicantDetailsIfTheyHaveAlreadyBeenSent()
         {
-            var applicantForm = new ApplicantForm();
+            var order = new OrderForm();
+            var applicant = new ApplicantForm();
+
+            var classUnderTest = BuildUpClassUnderTest();
+            
+            var response1 = classUnderTest.GetStep("LoanApplications", order, null);
+            var response2 = classUnderTest.GetStep("LoanApplications/1/applicant", applicant, response1.EchoState);
+            var response3 = classUnderTest.GetStep("LoanApplications/1/applicant", applicant, response2.EchoState);
+
+            Assert.That(response3.IsError, Is.True);
+        }
+
+        [Test]
+        public void ShouldOnlyAllowApplicantDetailsToBePostedAgainstAValidId()
+        {
+            var order = new OrderForm();
+            var applicant = new ApplicantForm();
+
             var classUnderTest = BuildUpClassUnderTest();
 
-            var response = classUnderTest.GetStep("nothere", applicantForm, null);
+            var responseToCreateOrder = classUnderTest.GetStep("LoanApplications", order, null);
+            var responseToAddApplicant = classUnderTest.GetStep("LoanApplications/" + Guid.NewGuid() + "/applicant",
+                                                                applicant, responseToCreateOrder.EchoState);
 
-            Assert.That(response.IsError, Is.EqualTo(true));
+            Assert.That(responseToAddApplicant.IsError, Is.True);
         }
 
         private void AssertExpectedResourcePath(string expectedResourcePath, Response response)
         {
             string expectedLink = GetRootUri() + expectedResourcePath;
             var links = response.Links.Select(x => x.Link).ToList();
-            Assert.That(links, Contains.Item(expectedLink));
+
+            var regexMatchPattern = expectedLink.Replace("{guid}", "[A-Za-z0-9]{8}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{12}");
+
+            var matches = links.Count(x => Regex.IsMatch(x, regexMatchPattern));
+
+            Assert.That(matches, Is.EqualTo(1));
+        }
+
+        private Response GetFirstStepUri(PaylaterSession session)
+        {
+            return session.GetStep("", null, null);
+        }
+    }
+
+    public static class PaylaterSessionTestHelperExtensions
+    {
+        public static Response GetNextResponseForRel(this PaylaterSession session, string relation, object payload, Response response)
+        {
+            Assert.IsFalse(response.IsError, "Cannot follow link that is an error");
+            var nextResourcePath = GetNextResourcePath(relation, response);
+
+            return session.GetStep(nextResourcePath, payload, response.EchoState);
+        }
+
+        public static string GetNextResourcePath(string relation, Response response)
+        {
+            var nextLinkToFollow = response.Links.Single(linkRelation => linkRelation.Relation == relation).Link;
+            var nextResourcePath = nextLinkToFollow.Substring(GetRootUri().Length);
+            return nextResourcePath;
+        }
+
+        private static string GetRootUri()
+        {
+            return "http://host.com/1.0/en-gb/Paylater/";
         }
     }
 

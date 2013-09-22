@@ -1,13 +1,20 @@
+using System;
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
 namespace Scratch
 {
     public class PaylaterSession
     {
-        private string _orderSent;
-
         private readonly MessageBus _messageBus;
         private readonly string _uriRoot;
+
+        private static readonly List<Guid> _validIds;
+
+        static PaylaterSession()
+        {
+            _validIds = new List<Guid>();
+        }
 
         public PaylaterSession(MessageBus messageBus, string uriRoot)
         {
@@ -17,57 +24,55 @@ namespace Scratch
 
         public Response GetStep(string resourceIdentifier, object payload, string echoState)
         {
-            _orderSent = echoState;
-            var response = new Response();
+            EchoState echo;
+            var serialiser = new EchoStateSerialiser();
 
-            if (resourceIdentifier == "")
+            if (string.IsNullOrEmpty(echoState))
+                echo = new EchoState();    
+            else
+                echo = serialiser.DeserializeEchoState(echoState);
+
+            Response response;
+
+            var initialPaylaterActions = new InitialPaylaterActions();
+            var createNewApplicationHandler = new CreateNewApplicationAction(_messageBus, _validIds);
+
+            if (initialPaylaterActions.IsHandlerForInput(resourceIdentifier, payload))
             {
-                response.Links.Add(new LinkRelation()
-                {
-                    Link = BuildUpLink("LoanApplications"),
-                    Relation = "CreateApplicationFromOrder",
-                    Method = "POST"
-                });
+                response = initialPaylaterActions.HandleAction(resourceIdentifier, payload, BuildUpLink);
             }
-            else if (resourceIdentifier == "LoanApplications")
+            else if (createNewApplicationHandler.IsHandlerForInput(resourceIdentifier, payload))
             {
-                OrderForm orderForm = (OrderForm) payload;
-                _orderSent = "true";
-                if (orderForm != null)
-                    _messageBus.Queue.Add(new CreateOrderMessage() {OrderId = orderForm.OrderId});
-
-
-                response.Links.Add( new LinkRelation()
-                                        {
-                                            Link = BuildUpLink("LoanApplications/1/applicant"),
-                                            Relation = "CreateApplicant",
-                                            Method = "POST"
-                                        });
-                response.Links.Add(new LinkRelation()
-                                       {
-                                           Link = BuildUpLink("LoanApplications/1/mobilephoneverifications"),
-                                           Relation = "CreateMobilePhoneVerificationRequest",
-                                           Method = "POST"
-                                       });
-
-                response.EchoState = _orderSent;
-
-                return response;
+                response = createNewApplicationHandler.HandleAction(resourceIdentifier, payload, echo, BuildUpLink);
             }
-            else if (Regex.IsMatch(resourceIdentifier, @"^LoanApplications/\d+$"))
+            else if (Regex.IsMatch(resourceIdentifier, @"^LoanApplications/[A-Za-z0-9]{8}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{12}$"))
             {
                 response = new Response() {IsError = true};
             }
-            else if (Regex.IsMatch(resourceIdentifier, @"^LoanApplications/\d+/applicant$") && _orderSent == "true")
+            else if (Regex.IsMatch(resourceIdentifier, @"^LoanApplications/[A-Za-z0-9]{8}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{12}/applicant$") 
+                && echo.OrderSent 
+                && !echo.ApplicantRecieved)
             {
-                response = new Response();
+                var guidMatcher =
+                    new Regex(
+                        @"^LoanApplications/(?<identifier>[A-Za-z0-9]{8}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{12})/applicant$");
+                var matches = guidMatcher.Match(resourceIdentifier);
+                var identifier = Guid.Parse(matches.Groups["identifier"].ToString());
+
+                if (_validIds.Contains(identifier))
+                {
+                    echo.ApplicantRecieved = true;
+                    response = new Response();
+                }
+                else
+                    response = new Response(){IsError = true};
             }
-            
             else
             {
                 response = new Response() {IsError = true};
             }
 
+            response.EchoState = serialiser.SerilaiseEchoState(echo);
             return response;
         }
 

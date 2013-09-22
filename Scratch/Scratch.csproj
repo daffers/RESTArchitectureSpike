@@ -43,6 +43,10 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="CreateNewApplicationAction.cs" />
+    <Compile Include="EchoState.cs" />
+    <Compile Include="InitialPaylaterActions.cs" />
+    <Compile Include="EchoStateSerialiser.cs" />
     <Compile Include="PaylaterSession.cs" />
     <Compile Include="Scratch.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
