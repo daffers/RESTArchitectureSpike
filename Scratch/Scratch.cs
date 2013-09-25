@@ -89,7 +89,7 @@ namespace Scratch
         }
 
         [Test]
-        public void IShouldNotBeAbleToPostAnOrderToAnExistingOrder()
+        public void IShouldNotBeAbleToPostAnOrderToAnExistingOrder()    
         {
             var order = new OrderForm();
             var classUnderTest = BuildUpClassUnderTest();

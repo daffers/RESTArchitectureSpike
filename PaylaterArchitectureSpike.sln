@@ -1,7 +1,9 @@
 ﻿
-Microsoft Visual Studio Solution File, Format Version 11.00
-# Visual Studio 2010
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 2012
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Scratch", "Scratch\Scratch.csproj", "{23B5241E-A19F-4D06-8DB7-95FE9764EF69}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MvcApplication1", "MvcApplication1\MvcApplication1.csproj", "{F274F88C-89B9-431D-9DBC-B30855EF7CB5}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -13,6 +15,10 @@ Global
 		{23B5241E-A19F-4D06-8DB7-95FE9764EF69}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{23B5241E-A19F-4D06-8DB7-95FE9764EF69}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{23B5241E-A19F-4D06-8DB7-95FE9764EF69}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F274F88C-89B9-431D-9DBC-B30855EF7CB5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F274F88C-89B9-431D-9DBC-B30855EF7CB5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F274F88C-89B9-431D-9DBC-B30855EF7CB5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F274F88C-89B9-431D-9DBC-B30855EF7CB5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
